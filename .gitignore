@@ -1,0 +1,23 @@
+# 배포본 (Release 자산으로 첨부, repo 트리엔 포함 안 함)
+dist/
+
+# 시크릿 — GitHub App private key / 인증서류
+# (공개 installer 레포에 실수 커밋되면 즉시 사고. 절대 풀지 말 것)
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# 에디터
+.vscode/
+.idea/
+*.swp
