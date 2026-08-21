@@ -78,18 +78,28 @@ cleanup_tmp() { rm -rf "$tmpdir"; }
 # === 최신 릴리스 메타 ===
 print -- ""
 say "최신 github-mcp-server 릴리스 정보를 가져오는 중..."
-release_json="$tmpdir/release.json"
-if ! curl -fsSL "https://api.github.com/repos/github/github-mcp-server/releases/latest" -o "$release_json"; then
-    say "✗ GitHub API 호출 실패. 인터넷 연결을 확인하세요."
-    cleanup_tmp
-    exit 1
+repo="github/github-mcp-server"
+version=""
+asset_url=""
+checksums_url=""
+
+# 인증 없는 GitHub API 는 IP 당 시간당 60회 제한이라 공유망에서 쉽게 소진된다.
+# 토큰이 있으면 5000회/시간으로 올라가므로 있으면 붙여서 호출한다.
+gh_token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+if [[ -z "$gh_token" ]] && command -v gh >/dev/null 2>&1; then
+    gh_token=$(gh auth token 2>/dev/null || true)
 fi
 
-version=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['tag_name'])" "$release_json")
-say "✓ 버전: $version"
+release_json="$tmpdir/release.json"
+api_args=(-fsSL)
+if [[ -n "$gh_token" ]]; then
+    api_args+=(-H "Authorization: Bearer $gh_token")
+fi
 
-# === 자산·체크섬 URL ===
-asset_url=$(ARCH="$asset_arch" python3 - <<'PYEOF' "$release_json"
+if curl "${api_args[@]}" "https://api.github.com/repos/$repo/releases/latest" -o "$release_json" 2>/dev/null; then
+    version=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['tag_name'])" "$release_json")
+
+    asset_url=$(ARCH="$asset_arch" python3 - <<'PYEOF' "$release_json"
 import json, os, sys
 arch = os.environ["ARCH"]
 d = json.load(open(sys.argv[1]))
@@ -101,17 +111,7 @@ for a in d["assets"]:
 PYEOF
 )
 
-if [[ -z "$asset_url" ]]; then
-    say "✗ $asset_arch 용 자산을 찾을 수 없습니다."
-    say "  https://github.com/github/github-mcp-server/releases/latest"
-    cleanup_tmp
-    exit 1
-fi
-
-asset_name=$(basename "$asset_url")
-say "✓ 자산: $asset_name"
-
-checksums_url=$(python3 - <<'PYEOF' "$release_json"
+    checksums_url=$(python3 - <<'PYEOF' "$release_json"
 import json, sys
 d = json.load(open(sys.argv[1]))
 for a in d["assets"]:
@@ -121,6 +121,46 @@ for a in d["assets"]:
         break
 PYEOF
 )
+else
+    # API 가 막히면(주로 rate limit 403) rate limit 이 없는 릴리스 페이지로 우회한다.
+    say "⚠ GitHub API 호출 실패(요청 한도 초과 등). 릴리스 페이지로 재시도합니다..."
+    version=$(curl -fsSI "https://github.com/$repo/releases/latest" \
+        | awk -F/ 'tolower($0) ~ /^location:/ { gsub(/\r/, ""); print $NF }')
+    if [[ -n "$version" ]]; then
+        assets_html="$tmpdir/assets.html"
+        if curl -fsSL "https://github.com/$repo/releases/expanded_assets/$version" -o "$assets_html"; then
+            asset_path=$(grep -o "href=\"[^\"]*${asset_arch}[^\"]*\"" "$assets_html" \
+                | sed 's/^href="//; s/"$//' | grep -E '\.(tar\.gz|zip)$' | head -1)
+            if [[ -n "$asset_path" ]]; then
+                asset_url="https://github.com$asset_path"
+            fi
+
+            checksums_path=$(grep -o 'href="[^"]*"' "$assets_html" \
+                | sed 's/^href="//; s/"$//' | grep -iE 'checksum|sha256' | head -1)
+            if [[ -n "$checksums_path" ]]; then
+                checksums_url="https://github.com$checksums_path"
+            fi
+        fi
+    fi
+fi
+
+if [[ -z "$version" ]]; then
+    say "✗ 릴리스 정보를 가져오지 못했습니다."
+    say "  잠시 후 다시 시도하거나, 인터넷 연결을 확인하세요."
+    cleanup_tmp
+    exit 1
+fi
+say "✓ 버전: $version"
+
+if [[ -z "$asset_url" ]]; then
+    say "✗ $asset_arch 용 자산을 찾을 수 없습니다."
+    say "  https://github.com/$repo/releases/latest"
+    cleanup_tmp
+    exit 1
+fi
+
+asset_name=$(basename "$asset_url")
+say "✓ 자산: $asset_name"
 
 # === 다운로드 ===
 print -- ""
