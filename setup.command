@@ -435,7 +435,10 @@ say "더 많은 예시는 docs/사용예시.md, 문제 발생 시 배포자에�
 # setup.command 는 보통 /tmp/jiro-github-mcp 에 clone 된 위치에서 실행된다.
 # 실제 설치본은 ~/Library/Application Support/jiro-github-mcp/ 에 옮겨졌으므로 clone 위치는 더 이상 필요 없다.
 # 단, 개발용으로 home 디렉토리 등에 clone 해서 돌리는 경우엔 건드리지 않는다.
-installer_root="$script_dir"
+# script_dir 은 ${0:A:h} 라 심볼릭 링크까지 해석돼 /private/tmp 로 나온다.
+# 정리 질문에는 사용자가 입력한 경로를 그대로 보여줘야 하므로
+# 링크를 해석하지 않는 :a 를 쓴다. (상대경로/Finder 실행 시엔 :a 도 /private/tmp 를 반환)
+installer_root=${0:a:h}
 if [[ ( "$installer_root" == /tmp/* || "$installer_root" == /private/tmp/* ) && -d "$installer_root/.git" ]]; then
     print -- ""
     print -n -- "Installer 디렉토리($installer_root)를 삭제할까요? [Y/n] "
