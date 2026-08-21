@@ -436,10 +436,10 @@ say "더 많은 예시는 docs/사용예시.md, 문제 발생 시 배포자에�
 # 실제 설치본은 ~/Library/Application Support/jiro-github-mcp/ 에 옮겨졌으므로 clone 위치는 더 이상 필요 없다.
 # 단, 개발용으로 home 디렉토리 등에 clone 해서 돌리는 경우엔 건드리지 않는다.
 installer_root="$script_dir"
-if [[ "$installer_root" == /tmp/* && -d "$installer_root/.git" ]]; then
+if [[ ( "$installer_root" == /tmp/* || "$installer_root" == /private/tmp/* ) && -d "$installer_root/.git" ]]; then
     print -- ""
     print -n -- "Installer 디렉토리($installer_root)를 삭제할까요? [Y/n] "
-    read -r cleanup_answer
+    read -r cleanup_answer || cleanup_answer=n   # 비대화형 실행(EOF)이면 삭제하지 않고 넘어간다
     case "$cleanup_answer" in
         ""|y|Y|yes|YES)
             rm -rf "$installer_root"
